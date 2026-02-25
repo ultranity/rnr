@@ -248,6 +248,18 @@ impl Renamer {
                 }
             }
 
+            // Create any missing parent directories for the target path
+            if let Some(target_parent) = operation.target.parent() {
+                if !target_parent.exists() {
+                    if let Err(err) = fs::create_dir_all(target_parent) {
+                        return Err(Error {
+                            kind: ErrorKind::CreateDir,
+                            value: Some(format!("{}: {}", target_parent.display(), err)),
+                        });
+                    }
+                }
+            }
+
             // Rename paths in the filesystem
             if let Err(err) = fs::rename(&operation.source, &operation.target) {
                 return Err(Error {
@@ -558,5 +570,36 @@ mod test {
         replacer.transform = TextTransformation::Ascii;
         let result = expression.replace(hay, &replacer);
         assert_eq!(result, "This.Is-a-File.txt");
+    }
+
+    #[test]
+    fn rename_creates_missing_parent_dirs() {
+        let tempdir = tempfile::tempdir().expect("Error creating temp directory");
+        println!("Running test in '{:?}'", tempdir);
+        let temp_path = tempdir.path().to_str().unwrap();
+
+        // Source file exists; target lives inside a subdirectory that does NOT yet exist.
+        let source = format!("{}/source_file.txt", temp_path);
+        // "new_dir/nested" does not exist
+        let target = format!("{}/new_dir/nested/target_file.txt", temp_path);
+        fs::File::create(&source).expect("Error creating mock file...");
+
+        let mock_config = Arc::new(Config {
+            run_mode: RunMode::Simple(vec![source.clone()]),
+            replace_mode: ReplaceMode::RegExp {
+                expression: Regex::new("source_file").unwrap(),
+                replacement: "new_dir/nested/target_file".to_string(),
+                limit: 1,
+                transform: TextTransformation::None,
+            },
+            ..Config::default()
+        });
+
+        run_with_config(mock_config);
+
+        // The target should now exist inside the newly created parent dirs.
+        assert!(Path::new(&target).exists());
+        // The source should no longer exist.
+        assert!(!Path::new(&source).exists());
     }
 }

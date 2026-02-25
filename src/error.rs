@@ -15,6 +15,7 @@ pub struct Error {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ErrorKind {
     CreateBackup,
+    CreateDir,
     CreateFile,
     CreateSymlink,
     EditorCommand,
@@ -32,6 +33,7 @@ impl Error {
         use self::ErrorKind::*;
         match self.kind {
             CreateBackup => "Cannot create a backup of ",
+            CreateDir => "Cannot create directory ",
             CreateFile => "Cannot create file ",
             CreateSymlink => "Cannot create symlink ",
             EditorCommand => "Failed to run editor ",
