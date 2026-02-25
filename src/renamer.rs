@@ -1,5 +1,6 @@
 use crate::config::{Config, ReplaceMode, RunMode};
 use crate::dumpfile;
+use crate::editor;
 use crate::error::*;
 use crate::fileutils::{cleanup_paths, create_backup, get_paths};
 use crate::solver;
@@ -23,8 +24,8 @@ impl Renamer {
     }
 
     /// Process path batch
-    pub fn process(&self) -> Result<Operations> {
-        let operations = match self.config.run_mode {
+    pub fn process(&self) -> Result<(Operations, Vec<PathBuf>)> {
+        let (operations, deletions) = match self.config.run_mode {
             RunMode::Simple(_) | RunMode::Recursive { .. } => {
                 // Get paths
                 let input_paths = get_paths(&self.config.run_mode);
@@ -36,16 +37,52 @@ impl Renamer {
                 let rename_map = self.get_rename_map(&clean_paths)?;
 
                 // Solve renaming operation ordering to avoid conflicts
-                solver::solve_rename_order(&rename_map)?
+                (solver::solve_rename_order(&rename_map)?, vec![])
             }
             RunMode::FromFile { ref path, undo } => {
                 // Read operations from file
                 let operations = dumpfile::read_from_file(&PathBuf::from(path))?;
-                if undo {
+                let ops = if undo {
                     solver::revert_operations(&operations)?
                 } else {
                     operations
-                }
+                };
+                (ops, vec![])
+            }
+            RunMode::Editor {
+                ref paths,
+                recursive,
+                max_depth,
+                hidden,
+                ref editor,
+                allow_delete,
+            } => {
+                // Collect the file paths to present in the editor
+                let run_mode = if recursive {
+                    RunMode::Recursive {
+                        paths: paths.clone(),
+                        max_depth,
+                        hidden,
+                    }
+                } else {
+                    RunMode::Simple(paths.clone())
+                };
+                let input_paths = get_paths(&run_mode);
+                let clean_paths = cleanup_paths(input_paths, self.config.dirs);
+
+                // Open editor and get rename/delete operations
+                let editor_result =
+                    editor::open_editor(&clean_paths, editor, allow_delete)?;
+
+                let deletions = editor_result.deletions;
+
+                // Solve rename ordering to avoid conflicts
+                let rename_map: RenameMap = editor_result
+                    .operations
+                    .into_iter()
+                    .map(|op| (op.target, op.source))
+                    .collect();
+                (solver::solve_rename_order(&rename_map)?, deletions)
             }
         };
 
@@ -54,7 +91,7 @@ impl Renamer {
             dumpfile::dump_to_file(self.config.dump_prefix.clone(), &operations)?;
         }
 
-        Ok(operations)
+        Ok((operations, deletions))
     }
 
     /// Rename an operation batch
@@ -62,6 +99,47 @@ impl Renamer {
         for operation in operations {
             self.rename(&operation)?;
         }
+        Ok(())
+    }
+
+    /// Delete a list of paths from the filesystem (or just print in dry-run mode).
+    pub fn batch_delete(&self, deletions: Vec<PathBuf>) -> Result<()> {
+        for path in deletions {
+            self.delete(&path)?;
+        }
+        Ok(())
+    }
+
+    /// Delete a single path or print what would be deleted in dry-run mode.
+    fn delete(&self, path: &Path) -> Result<()> {
+        let printer = &self.config.printer;
+        let colors = &printer.colors;
+
+        if self.config.force {
+            let remove_result = if path.is_dir() {
+                fs::remove_dir_all(path)
+            } else {
+                fs::remove_file(path)
+            };
+            if let Err(err) = remove_result {
+                return Err(Error {
+                    kind: ErrorKind::Rename,
+                    value: Some(format!("delete {}: {}", path.display(), err)),
+                });
+            }
+            printer.print(&format!(
+                "{} {}",
+                colors.error.paint("Deleted:"),
+                colors.source.paint(path.display().to_string())
+            ));
+        } else {
+            printer.print(&format!(
+                "{} {}",
+                colors.warn.paint("Would delete:"),
+                colors.source.paint(path.display().to_string())
+            ));
+        }
+
         Ok(())
     }
 
@@ -274,8 +352,8 @@ mod test {
                 panic!("Error initializing renamer");
             }
         };
-        let operations = match renamer.process() {
-            Ok(operations) => operations,
+        let (operations, _deletions) = match renamer.process() {
+            Ok(result) => result,
             Err(err) => {
                 mock_config.printer.print_error(&err);
                 panic!("Error processing");
