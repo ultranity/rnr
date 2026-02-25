@@ -88,11 +88,15 @@ Check a detailed description of the application usage and all its options using:
 * Dump all operations into a file in force mode. This dump file can be used to
   undo these operations from `from-file` subcommand.
 * Number of replacements set to one.
+* Automatically creates missing parent directories when the target path requires
+  them (e.g. renaming `file.txt` to `new_dir/sub/file.txt` creates
+  `new_dir/sub/` on the fly).
 
 ## Examples
 * [Rename a list of files](#rename-a-list-of-files)
     * [Include directories](#include-directories)
     * [Multiple replacements](#multiple-replacements)
+    * [Rename into a new subdirectory](#rename-into-a-new-subdirectory)
     * [Combination with other UNIX tools](#combination-with-other-unix-tools)
 * [Recursive rename](#recursive-rename)
     * [Recursive rename with max directory depth](#recursive-rename-with-max-directory-depth)
@@ -194,6 +198,34 @@ rnr regex -f -l 0 o u ./*
 ├── fuufuufuu.txt
 └── fuufuufuufuu.txt
 ```
+
+#### Rename into a new subdirectory
+When the target path contains directories that do not exist yet, `rnr`
+creates them automatically — no manual `mkdir` needed.
+
+```sh
+rnr regex -f '(.*)' 'archive/2024/${1}' ./*
+```
+
+*Original tree*
+```
+.
+├── report-01.txt
+├── report-02.txt
+└── report-03.txt
+```
+*Renamed tree*
+```
+.
+└── archive
+    └── 2024
+        ├── report-01.txt
+        ├── report-02.txt
+        └── report-03.txt
+```
+
+The same applies to any depth of nesting — `rnr` will create the full chain of
+missing parent directories.
 
 #### Combination with other UNIX tools
 You can combine `rnr` with other UNIX tools using pipes to pass arguments.

@@ -1,5 +1,8 @@
 ## Unreleased
 ### Added
+* Automatically create missing parent directories when the target path of a
+  rename operation requires them (e.g. renaming `file.txt` to
+  `archive/2024/file.txt` creates `archive/2024/` on the fly).
 * New `editor` subcommand: interactive rename (and optional delete) of files
   using your preferred text editor, similar to `vidir`.
   * Opens a temporary file (in the OS temp directory) containing one path per
