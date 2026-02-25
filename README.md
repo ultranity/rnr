@@ -30,6 +30,7 @@
 * Select limit of replacements.
 * Apply text transformations to the replacements including capture groups.
 * Convert UTF-8 file names to ASCII representation.
+* Interactive rename (and optional delete) using your preferred text editor, similar to `vidir`.
 
 # Install
 
@@ -96,6 +97,11 @@ Check a detailed description of the application usage and all its options using:
 * [Recursive rename](#recursive-rename)
     * [Recursive rename with max directory depth](#recursive-rename-with-max-directory-depth)
     * [Recursive rename including directories and hidden files](#recursive-rename-including-directories-and-hidden-files)
+* [Interactive editor rename](#interactive-editor-rename)
+    * [Rename files in the editor](#rename-files-in-the-editor)
+    * [Delete files in the editor](#delete-files-in-the-editor)
+    * [Choose your editor](#choose-your-editor)
+    * [Recursive editor rename](#recursive-editor-rename)
 * [Undo/redo operations using dump file](#undoredo-operations-using-dump-file)
 * [Create backup files before renaming](#create-backup-files-before-renaming)
 * [Convert UTF-8 file names to ASCII](#convert-utf-8-file-names-to-ascii)
@@ -325,6 +331,111 @@ rnr regex -f -r -D -x foo bar ./
 └── .bar_hidden_dir
     └── bar.txt
 ```
+
+### Interactive editor rename
+The `editor` subcommand opens a list of paths in your preferred text editor.
+After you save and exit, `rnr` applies any renames (and optionally deletions)
+you made.
+
+**Temp file:** `rnr` writes the path list to a temporary file in the OS temp
+directory (e.g. `/tmp/rnr-editor-XXXXXX.txt` on Linux/macOS) and passes that
+path to the editor. The file is automatically removed when `rnr` finishes.
+
+**Recursive mode:** When `-r` is used, `rnr` first collects **all** matching
+paths from every subdirectory (applying `--max-depth` and `--hidden` filters as
+usual), then opens the editor **once** with the complete list.
+
+**Editor selection:** `--editor <CMD>` → `$VISUAL` → `$EDITOR` → `vi`
+
+#### Rename files in the editor
+By default (no `--delete`) every line in the editor corresponds positionally to
+one source path.  Edit a path to rename that file.  The line count **must not
+change** — removing a line is an error.
+
+```sh
+rnr editor -f ./*
+```
+
+The editor will open with content like:
+```
+/path/to/file-01.txt
+/path/to/file-02.txt
+/path/to/file-03.txt
+```
+
+Edit and save to, for example:
+```
+/path/to/renamed-01.txt
+/path/to/file-02.txt
+/path/to/file-03.txt
+```
+
+*Original tree*
+```
+.
+├── file-01.txt
+├── file-02.txt
+└── file-03.txt
+```
+*Renamed tree*
+```
+.
+├── renamed-01.txt
+├── file-02.txt
+└── file-03.txt
+```
+
+#### Delete files in the editor
+Pass `--delete` to enable file deletion.  Each line is then prefixed with a
+1-based index and a tab character (`INDEX<TAB>PATH`).  Remove a line entirely
+to delete that file; change the path after the tab to rename it.
+
+```sh
+rnr editor -f --delete ./*
+```
+
+The editor will open with content like:
+```
+1	/path/to/file-01.txt
+2	/path/to/file-02.txt
+3	/path/to/file-03.txt
+```
+
+Remove line 2 and save:
+```
+1	/path/to/file-01.txt
+3	/path/to/file-03.txt
+```
+
+*Result:* `file-02.txt` is deleted; `file-01.txt` and `file-03.txt` are
+unchanged.
+
+#### Choose your editor
+Use `--editor` to override the default editor selection:
+```sh
+rnr editor -f --editor nano ./*
+rnr editor -f --editor "code --wait" ./*
+```
+
+If `--editor` is not given, `rnr` checks `$VISUAL`, then `$EDITOR`, and falls
+back to `vi`.
+
+#### Recursive editor rename
+Combine `-r` with the `editor` subcommand to collect all files from a directory
+tree first, then edit the full list in one session:
+
+```sh
+rnr editor -f -r ./
+```
+
+The editor opens with **all** paths found in the tree.  The same rename/delete
+rules apply as in the non-recursive case.
+
+```sh
+rnr editor -f -r -d 2 --delete ./
+```
+
+This limits collection to 2 directory levels deep and enables deletion.
 
 ### Undo/redo operations using dump file
 When you perform a renaming operation, `rnr` will create by default a dump file in the current directory you executed the command. This file can be used to easily revert the operations using `from-file` and `-u` option.
