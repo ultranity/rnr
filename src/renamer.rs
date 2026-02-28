@@ -56,6 +56,7 @@ impl Renamer {
                 hidden,
                 ref editor,
                 allow_delete,
+                interactive: _,
             } => {
                 // Collect the file paths to present in the editor
                 let run_mode = if recursive {
@@ -105,36 +106,37 @@ impl Renamer {
         &self,
         operations: Operations,
         mut deletions: Vec<PathBuf>,
+        force: bool,
     ) -> Result<Vec<PathBuf>> {
         for operation in operations {
-            if self.config.force {
+            if force {
                 if let Some(index) = deletions
                     .iter()
                     .position(|path| path == &operation.target && path.symlink_metadata().is_ok())
                 {
                     let path = deletions.remove(index);
-                    self.delete(&path)?;
+                    self.delete(&path, true)?;
                 }
             }
-            self.rename(&operation)?;
+            self.rename(&operation, force)?;
         }
         Ok(deletions)
     }
 
     /// Delete a list of paths from the filesystem (or just print in dry-run mode).
-    pub fn batch_delete(&self, deletions: Vec<PathBuf>) -> Result<()> {
+    pub fn batch_delete(&self, deletions: Vec<PathBuf>, force: bool) -> Result<()> {
         for path in deletions {
-            self.delete(&path)?;
+            self.delete(&path, force)?;
         }
         Ok(())
     }
 
     /// Delete a single path or print what would be deleted in dry-run mode.
-    fn delete(&self, path: &Path) -> Result<()> {
+    fn delete(&self, path: &Path, force: bool) -> Result<()> {
         let printer = &self.config.printer;
         let colors = &printer.colors;
 
-        if self.config.force {
+        if force {
             let remove_result = if path.is_dir() {
                 fs::remove_dir_all(path)
             } else {
@@ -244,11 +246,11 @@ impl Renamer {
 
     /// Rename path in the filesystem or simply print renaming information. Checks if target
     /// filename exists before renaming.
-    fn rename(&self, operation: &Operation) -> Result<()> {
+    fn rename(&self, operation: &Operation, force: bool) -> Result<()> {
         let printer = &self.config.printer;
         let colors = &printer.colors;
 
-        if self.config.force {
+        if force {
             // Create a backup before actual renaming
             if self.config.backup && !&operation.source.is_dir() {
                 match create_backup(&operation.source) {
@@ -390,7 +392,7 @@ mod test {
                 panic!("Error processing");
             }
         };
-        if let Err(err) = renamer.batch_rename(operations, vec![]) {
+        if let Err(err) = renamer.batch_rename(operations, vec![], true) {
             mock_config.printer.print_error(&err);
             panic!("Error renaming");
         }

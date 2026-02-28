@@ -106,6 +106,7 @@ Check a detailed description of the application usage and all its options using:
 * [Interactive editor rename](#interactive-editor-rename)
     * [Rename files in the editor](#rename-files-in-the-editor)
     * [Delete files in the editor](#delete-files-in-the-editor)
+    * [Interactive apply confirmation](#interactive-apply-confirmation)
     * [Choose your editor](#choose-your-editor)
     * [Recursive editor rename](#recursive-editor-rename)
 * [Undo/redo operations using dump file](#undoredo-operations-using-dump-file)
@@ -443,6 +444,18 @@ Remove line 2 and save:
 
 *Result:* `file-02.txt` is deleted; `file-01.txt` and `file-03.txt` are
 unchanged.
+
+#### Interactive apply confirmation
+Use `--interactive` to run editor mode in two steps:
+1. First run as dry-run and show planned rename/delete actions.
+2. Then ask `Apply these changes? [y/N]`.
+3. If you confirm with `y`/`yes`, apply the same operations immediately.
+
+```sh
+rnr editor --interactive ./*
+```
+
+This mode helps verify edits before applying them without reopening the editor.
 
 #### Choose your editor
 Use `--editor` to override the default editor selection:

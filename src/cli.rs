@@ -121,6 +121,9 @@ pub enum SubCommands {
         /// Enable file deletion by removing lines in the editor.
         #[arg(long)]
         delete: bool,
+        /// Preview changes first, then ask whether to apply them.
+        #[arg(short = 'i', long, conflicts_with = "force")]
+        interactive: bool,
         /// Editor command to use. Defaults to $VISUAL, then $EDITOR, then 'vi'.
         #[arg(long, value_name = "CMD")]
         editor: Option<String>,

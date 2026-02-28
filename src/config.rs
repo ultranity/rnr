@@ -55,6 +55,7 @@ pub enum RunMode {
         hidden: bool,
         editor: String,
         allow_delete: bool,
+        interactive: bool,
     },
 }
 
@@ -86,6 +87,7 @@ impl ArgumentParser<'_> {
             SubCommands::Editor {
                 path,
                 delete,
+                interactive,
                 editor,
                 ..
             } => {
@@ -101,6 +103,7 @@ impl ArgumentParser<'_> {
                     hidden: path.hidden,
                     editor: editor_cmd,
                     allow_delete: *delete,
+                    interactive: *interactive,
                 });
             }
             SubCommands::Regex(RegexArgs { path, .. }) => path,
@@ -277,6 +280,7 @@ mod test {
                 common: common_args(false, false, false),
                 path: path_args(),
                 delete: false,
+                interactive: false,
                 editor: None,
             },
         };
@@ -315,6 +319,7 @@ mod test {
                 common: common_args(false, true, false),
                 path: path_args(),
                 delete: false,
+                interactive: false,
                 editor: None,
             },
         };

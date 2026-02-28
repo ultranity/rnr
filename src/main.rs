@@ -16,6 +16,7 @@ extern crate clap;
 extern crate serde_derive;
 
 use crate::renamer::Renamer;
+use std::io::Write;
 
 mod cli;
 mod config;
@@ -62,19 +63,54 @@ fn main() {
         }
     };
 
-    // Batch rename operations. If some rename targets are also in the deletion list
-    // (editor --delete flow), those paths are deleted right before the conflicting rename.
-    let deletions = match renamer.batch_rename(operations, deletions) {
-        Ok(deletions) => deletions,
-        Err(err) => {
+    let interactive = matches!(
+        config.run_mode,
+        config::RunMode::Editor {
+            interactive: true,
+            ..
+        }
+    );
+
+    if interactive {
+        if let Err(err) = run_batch(&renamer, operations.clone(), deletions.clone(), false) {
             config.printer.print_error(&err);
             std::process::exit(1);
         }
-    };
 
-    // Batch delete remaining operations (only populated for editor mode with --delete)
-    if let Err(err) = renamer.batch_delete(deletions) {
+        if !confirm_apply() {
+            config.printer.print("Aborted. Changes were not applied.");
+            return;
+        }
+        config.printer.print("Applying changes...");
+    }
+
+    let force = if interactive { true } else { config.force };
+    if let Err(err) = run_batch(&renamer, operations, deletions, force) {
         config.printer.print_error(&err);
         std::process::exit(1);
     }
+}
+
+fn run_batch(
+    renamer: &Renamer,
+    operations: solver::Operations,
+    deletions: Vec<std::path::PathBuf>,
+    force: bool,
+) -> error::Result<()> {
+    // Batch rename operations. If some rename targets are also in the deletion list
+    // (editor --delete flow), those paths are deleted right before the conflicting rename.
+    let deletions = renamer.batch_rename(operations, deletions, force)?;
+    // Batch delete remaining operations (only populated for editor mode with --delete)
+    renamer.batch_delete(deletions, force)?;
+    Ok(())
+}
+
+fn confirm_apply() -> bool {
+    print!("Apply these changes? [y/N]: ");
+    let _ = std::io::stdout().flush();
+    let mut answer = String::new();
+    if std::io::stdin().read_line(&mut answer).is_err() {
+        return false;
+    }
+    matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
