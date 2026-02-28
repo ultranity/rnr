@@ -1,4 +1,4 @@
-use crate::cli::{Cli, RegexArgs};
+use crate::cli::{Cli, CommonArgs, RegexArgs};
 use crate::output::Printer;
 use anyhow::{Result, bail};
 use clap::Parser;
@@ -158,12 +158,11 @@ fn parse_arguments() -> Result<Config> {
         SubCommands::FromFile { common, .. } => (common, None),
     };
 
-    // Set dump defaults: write in force mode and do not in dry-run unless it is explicitly asked
-    let dump = if common.force {
-        !common.no_dump
-    } else {
-        common.dump
-    };
+    // Dump defaults:
+    // - enabled in force mode
+    // - enabled in editor mode (including dry-run) to keep edit history
+    // - enabled explicitly with --dump
+    let dump = should_dump(&cli, common);
 
     let printer = if common.silent {
         Printer::silent()
@@ -194,6 +193,18 @@ fn parse_arguments() -> Result<Config> {
         replace_mode,
         printer,
     })
+}
+
+fn should_dump(cli: &Cli, common: &CommonArgs) -> bool {
+    if common.no_dump {
+        return false;
+    }
+
+    if common.force || common.dump {
+        return true;
+    }
+
+    matches!(cli.command, SubCommands::Editor { .. })
 }
 
 /// Detect if output must be colored and returns a properly configured printer.
@@ -232,4 +243,85 @@ impl From<Option<ReplaceTransform>> for TextTransformation {
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    use super::*;
+    use crate::cli::Color;
+
+    fn path_args() -> crate::cli::PathArgs {
+        crate::cli::PathArgs {
+            paths: vec!["./*".to_string()],
+            include_dirs: false,
+            recursive: false,
+            max_depth: None,
+            hidden: false,
+        }
+    }
+
+    fn common_args(force: bool, no_dump: bool, dump: bool) -> CommonArgs {
+        CommonArgs {
+            dry_run: !force,
+            force,
+            backup: false,
+            silent: false,
+            color: Color::Never,
+            dump,
+            dump_prefix: "rnr-".to_string(),
+            no_dump,
+        }
+    }
+
+    #[test]
+    fn dump_enabled_in_editor_dry_run_mode() {
+        let cli = Cli {
+            command: SubCommands::Editor {
+                common: common_args(false, false, false),
+                path: path_args(),
+                delete: false,
+                editor: None,
+            },
+        };
+        let common = match &cli.command {
+            SubCommands::Editor { common, .. } => common,
+            _ => panic!("unexpected command"),
+        };
+        assert!(should_dump(&cli, common));
+    }
+
+    #[test]
+    fn dump_disabled_in_regex_dry_run_mode_by_default() {
+        let cli = Cli {
+            command: SubCommands::Regex(RegexArgs {
+                expression: "a".to_string(),
+                replacement: "b".to_string(),
+                common: common_args(false, false, false),
+                replace: crate::cli::ReplaceArgs {
+                    replace_limit: None,
+                    replace_transform: None,
+                },
+                path: path_args(),
+            }),
+        };
+        let common = match &cli.command {
+            SubCommands::Regex(RegexArgs { common, .. }) => common,
+            _ => panic!("unexpected command"),
+        };
+        assert!(!should_dump(&cli, common));
+    }
+
+    #[test]
+    fn no_dump_still_disables_dump() {
+        let cli = Cli {
+            command: SubCommands::Editor {
+                common: common_args(false, true, false),
+                path: path_args(),
+                delete: false,
+                editor: None,
+            },
+        };
+        let common = match &cli.command {
+            SubCommands::Editor { common, .. } => common,
+            _ => panic!("unexpected command"),
+        };
+        assert!(!should_dump(&cli, common));
+    }
+}

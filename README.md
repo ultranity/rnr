@@ -85,8 +85,10 @@ Check a detailed description of the application usage and all its options using:
 * Does not generate backups.
 * Output is *colored* (only ANSI terminals).
 * Ignore hidden files and directories.
-* Dump all operations into a file in force mode. This dump file can be used to
-  undo these operations from `from-file` subcommand.
+* Dump all operations into a file in force mode, and also by default in
+  `editor` dry-run mode (to avoid losing edit history). You can disable this
+  with `--no-dump`. This dump file can be used to undo operations from
+  `from-file` subcommand.
 * Number of replacements set to one.
 * Automatically creates missing parent directories when the target path requires
   them (e.g. renaming `file.txt` to `new_dir/sub/file.txt` creates

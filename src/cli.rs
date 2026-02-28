@@ -42,7 +42,7 @@ pub struct CommonArgs {
     #[arg(value_enum, long, default_value_t = Color::Auto)]
     pub color: Color,
 
-    /// Force dumping operations into a file even in dry-run mode.
+    /// Dump operations into a file.
     #[arg(long, conflicts_with = "no_dump")]
     pub dump: bool,
     /// Set the dump file prefix.
