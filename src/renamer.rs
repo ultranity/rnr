@@ -82,7 +82,13 @@ impl Renamer {
                     .into_iter()
                     .map(|op| (op.target, op.source))
                     .collect();
-                (solver::solve_rename_order(&rename_map)?, deletions)
+                (
+                    solver::solve_rename_order_with_allowed_existing(
+                        &rename_map,
+                        &deletions,
+                    )?,
+                    deletions,
+                )
             }
         };
 
@@ -95,11 +101,24 @@ impl Renamer {
     }
 
     /// Rename an operation batch
-    pub fn batch_rename(&self, operations: Operations) -> Result<()> {
+    pub fn batch_rename(
+        &self,
+        operations: Operations,
+        mut deletions: Vec<PathBuf>,
+    ) -> Result<Vec<PathBuf>> {
         for operation in operations {
+            if self.config.force {
+                if let Some(index) = deletions
+                    .iter()
+                    .position(|path| path == &operation.target && path.symlink_metadata().is_ok())
+                {
+                    let path = deletions.remove(index);
+                    self.delete(&path)?;
+                }
+            }
             self.rename(&operation)?;
         }
-        Ok(())
+        Ok(deletions)
     }
 
     /// Delete a list of paths from the filesystem (or just print in dry-run mode).
@@ -371,7 +390,7 @@ mod test {
                 panic!("Error processing");
             }
         };
-        if let Err(err) = renamer.batch_rename(operations) {
+        if let Err(err) = renamer.batch_rename(operations, vec![]) {
             mock_config.printer.print_error(&err);
             panic!("Error renaming");
         }

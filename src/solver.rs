@@ -21,6 +21,14 @@ pub type Operations = Vec<Operation>;
 /// Solve renaming order to avoid file overwrite. Solver will order the operations considering
 /// existing targets to avoid conflicts.
 pub fn solve_rename_order(rename_map: &RenameMap) -> Result<Operations> {
+    solve_rename_order_with_allowed_existing(rename_map, &[])
+}
+
+/// Solve renaming order allowing existing targets if they are listed in `allowed_existing`.
+pub fn solve_rename_order_with_allowed_existing(
+    rename_map: &RenameMap,
+    allowed_existing: &[PathBuf],
+) -> Result<Operations> {
     // Get a map of path levels
     let mut level_map: HashMap<usize, PathList> = HashMap::new();
     rename_map.keys().for_each(|p| {
@@ -42,7 +50,8 @@ pub fn solve_rename_order(rename_map: &RenameMap) -> Result<Operations> {
         let level_targets: Vec<PathBuf> = level_map.remove(&level).unwrap();
 
         // Return existing targets in the list of original filenames
-        let mut existing_targets = get_existing_targets(&level_targets, rename_map)?;
+        let mut existing_targets =
+            get_existing_targets(&level_targets, rename_map, allowed_existing)?;
 
         // Store first all non conflicting entries
         rename_order.append(
@@ -93,7 +102,11 @@ pub fn revert_operations(operations: &[Operation]) -> Result<Operations> {
 
 /// Check if targets exist in the filesystem and return a list of them. If they exist, these
 /// targets must be contained in the original file list for the renaming problem to be solvable.
-fn get_existing_targets(targets: &[PathBuf], rename_map: &RenameMap) -> Result<PathList> {
+fn get_existing_targets(
+    targets: &[PathBuf],
+    rename_map: &RenameMap,
+    allowed_existing: &[PathBuf],
+) -> Result<PathList> {
     // PERF: Handle check in the filesystem in parallel.
     let files_in_fs: Vec<PathBuf> = targets
         .into_par_iter()
@@ -103,7 +116,9 @@ fn get_existing_targets(targets: &[PathBuf], rename_map: &RenameMap) -> Result<P
 
     let mut existing_targets = Vec::new();
     for target in files_in_fs {
-        if !rename_map.values().any(|x| x == &target) {
+        if !rename_map.values().any(|x| x == &target)
+            && !allowed_existing.iter().any(|x| x == &target)
+        {
             // The source and the target may be the same file in some conditions like case
             // insensitive but case-preserving file systems. In that case exclude that file without
             // any error.
@@ -207,7 +222,7 @@ mod test {
         ];
         let mock_rename_map: RenameMap =
             mock_targets.clone().into_iter().zip(mock_sources).collect();
-        let existing_targets = get_existing_targets(&mock_targets, &mock_rename_map)
+        let existing_targets = get_existing_targets(&mock_targets, &mock_rename_map, &[])
             .expect("Error getting existing targets.");
 
         assert!(existing_targets.contains(&mock_targets[0]));
@@ -244,7 +259,7 @@ mod test {
         ];
         let mock_rename_map: RenameMap =
             mock_targets.clone().into_iter().zip(mock_sources).collect();
-        let existing_targets = get_existing_targets(&mock_targets, &mock_rename_map)
+        let existing_targets = get_existing_targets(&mock_targets, &mock_rename_map, &[])
             .expect("Error getting existing targets.");
 
         assert!(existing_targets.contains(&mock_targets[0]));
@@ -338,5 +353,28 @@ mod test {
         assert_eq!(operations[2].target, mock_targets[2]);
         assert_eq!(operations[3].target, mock_targets[1]);
         assert_eq!(operations[4].target, mock_targets[0]);
+    }
+
+    #[test]
+    fn test_solve_rename_order_with_allowed_existing() {
+        let tempdir = tempfile::tempdir().expect("Error creating temp directory");
+        let temp_path = tempdir.path().to_str().unwrap();
+
+        let source: PathBuf = [temp_path, "a.txt"].iter().collect();
+        let deleted_target: PathBuf = [temp_path, "b.txt"].iter().collect();
+        fs::File::create(&source).expect("Error creating mock source file...");
+        fs::File::create(&deleted_target).expect("Error creating mock target file...");
+
+        let mut mock_rename_map: RenameMap = RenameMap::new();
+        mock_rename_map.insert(deleted_target.clone(), source.clone());
+
+        let operations = solve_rename_order_with_allowed_existing(
+            &mock_rename_map,
+            std::slice::from_ref(&deleted_target),
+        )
+        .expect("Failed to solve rename order with allowed existing target.");
+        assert_eq!(operations.len(), 1);
+        assert_eq!(operations[0].source, source);
+        assert_eq!(operations[0].target, deleted_target);
     }
 }

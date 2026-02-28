@@ -62,13 +62,17 @@ fn main() {
         }
     };
 
-    // Batch rename operations
-    if let Err(err) = renamer.batch_rename(operations) {
-        config.printer.print_error(&err);
-        std::process::exit(1);
-    }
+    // Batch rename operations. If some rename targets are also in the deletion list
+    // (editor --delete flow), those paths are deleted right before the conflicting rename.
+    let deletions = match renamer.batch_rename(operations, deletions) {
+        Ok(deletions) => deletions,
+        Err(err) => {
+            config.printer.print_error(&err);
+            std::process::exit(1);
+        }
+    };
 
-    // Batch delete operations (only populated for editor mode with --delete)
+    // Batch delete remaining operations (only populated for editor mode with --delete)
     if let Err(err) = renamer.batch_delete(deletions) {
         config.printer.print_error(&err);
         std::process::exit(1);
